@@ -1,0 +1,15 @@
+# Dev overrides, merged over autumn.toml under `cargo run`.
+#
+# Files beside the repo. `cargo run -p apiary-app` creates the control
+# database, the fleet root and the Harvest file, and starts serving — there is
+# no service to start first.
+
+[database]
+url = "sqlite://apiary-control.db"
+
+# The session cookie says which hive you are standing in. `cargo run` serves
+# plain http on localhost, and Safari (and most HTTP clients) will not send a
+# `Secure` cookie there, so the dev profile drops the flag. Production keeps
+# Autumn's default, `secure = true`.
+[session]
+secure = false

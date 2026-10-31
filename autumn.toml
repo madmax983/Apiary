@@ -1,0 +1,56 @@
+[server]
+# Loopback locally. A container would set AUTUMN_SERVER__HOST=0.0.0.0.
+host = "127.0.0.1"
+port = 3000
+
+[log]
+level = "info"
+format = "Pretty"
+
+[health]
+path = "/health"
+# Shows the fleet's own component: mode, open files, created/deleted totals.
+detailed = true
+
+# Founding a hive, writing a note, raising a storm and offboarding are htmx
+# posts; the layout loads Autumn's CSRF helper, which lifts the token from the
+# meta tag into a header on every one of them.
+[security.csrf]
+enabled = true
+
+# The session holds one thing: which hive you are standing in.
+[session]
+backend = "memory"
+allow_memory_in_production = true
+
+[jobs]
+backend = "memory"
+workers = 0
+
+[channels]
+backend = "local"
+
+# The tenant is whatever hive the session says. Everything that is not one
+# hive's page works without one.
+[tenancy]
+enabled = true
+source = "session"
+session_key = "tenant_id"
+login_redirect = "/"
+public_paths = ["/", "/_map", "/stream", "/hives", "/enter", "/storm", "/search", "/about", "/apiary.js", "/static"]
+
+# The control database. Sessions and offboarding rows; never a note.
+[database]
+url = "sqlite://apiary-control.db"
+
+# One SQLite file per hive (ADR 0019 in autumn-web).
+[database.fleet]
+mode = "tenant"
+root = "apiary-fleet"
+# Deliberately small, so a storm makes the fleet close files in front of you.
+max_open = 16
+pool_size = 2
+# A hive exists only once somebody founds it; walking into one that does not
+# is a 404, not an empty file.
+create_on_demand = false
+idle_close_secs = 20
