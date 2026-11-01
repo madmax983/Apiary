@@ -31,3 +31,7 @@ holds no notes, and a hive holds no offboarding rows.
 autumn-web grows a way to scope an app migration set (for example
 `.migrations_for(Control, …)` / `.migrations_for(Fleet, …)`). Then split the
 set and drop the empty copies.
+
+That way now exists, after autumn-web 0.9.0: `AppBuilder::migrations_for`
+with `MigrationScope::Control` and `MigrationScope::Shards` ([autumn#3559](https://github.com/autumn-foundation/autumn/pull/3559)). Do
+the split when Apiary upgrades.
