@@ -1,0 +1,11 @@
+/target
+/.git
+/verus
+/docs/shots
+*.db
+*.db-*
+/apiary-fleet
+/apiary-archive
+.DS_Store
+.env
+.env.*
