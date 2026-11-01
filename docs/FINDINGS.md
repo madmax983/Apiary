@@ -5,8 +5,10 @@ documents 0.8.0 and has no fleet guide). Each is reproducible from this repo.
 
 ## Status
 
-All fixed in autumn-web, in the release after 0.9.0 ([autumn#3559](https://github.com/autumn-foundation/autumn/pull/3559)). Apiary
-pins 0.9, so it keeps its workarounds until it upgrades.
+The fixes are in
+[autumn#3559](https://github.com/autumn-foundation/autumn/pull/3559), for the
+release after 0.9.0. Apiary pins 0.9, so it keeps its workarounds until it
+upgrades.
 
 | # | Fix | Apiary, after the upgrade |
 |---|-----|---------------------------|
