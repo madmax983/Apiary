@@ -10,7 +10,7 @@ cargo run -p apiary-app      # then open http://localhost:3000
 ./verify.sh                  # the authoritative gate (toolchain, tests, boot, flow, Verus)
 ```
 
-No database server, no Docker. The control database, every hive and the
+No database server, no Docker needed locally. The control database, every hive and the
 workflow runtime are SQLite files beside the repo.
 
 ![The comb mid-storm: 261 files open against a cap of 16](docs/shots/comb-storm.png)
@@ -55,6 +55,31 @@ to 16 within seconds and to 0 after `idle_close_secs`. Nothing leaks, but on a
 Mac with the default `ulimit -n` of 256 the storm button can hit "too many open
 files" — `verify.sh` raises the limit before booting. Details, and other
 notes for the 0.9 docs, in [docs/FINDINGS.md](docs/FINDINGS.md).
+
+## Deploy to Fly.io
+
+One machine and one volume: `Dockerfile` builds the binary, `autumn-prod.toml`
+is the prod profile (binds `0.0.0.0`, JSON logs, migrates on boot), and
+`fly.toml` mounts every file Apiary writes at `/data`. Pick an app name first
+and put it in `fly.toml` twice (`app` and `AUTUMN_SECURITY__TRUSTED_HOSTS__HOSTS`).
+
+```sh
+fly apps create <name>
+fly volumes create apiary_data --region iad --size 1 --count 1 -a <name>
+fly secrets set AUTUMN_SECURITY__SIGNING_SECRET="$(openssl rand -hex 32)" -a <name>
+fly deploy --ha=false
+```
+
+`--ha=false` matters: Apiary is single-machine by construction (in-memory
+sessions, one Harvest runtime, SQLite on one volume), so never scale past one.
+To check the image locally first:
+
+```sh
+docker build -t apiary .
+docker run --rm -p 3000:3000 -v apiary-data:/data \
+  -e AUTUMN_SECURITY__SIGNING_SECRET="$(openssl rand -hex 32)" \
+  -e AUTUMN_SECURITY__TRUSTED_HOSTS__HOSTS=localhost apiary
+```
 
 ## Layout
 

@@ -1,0 +1,17 @@
+# Production overrides, merged over autumn.toml when AUTUMN_PROFILE=prod (the
+# container image sets it). Deployment-specific values (file paths on the
+# volume, the public hostname, the signing secret) come from the environment;
+# see fly.toml and DEPLOY.md.
+
+[server]
+# Inside a container the proxy reaches us on the machine's interface.
+host = "0.0.0.0"
+
+[log]
+format = "Json"
+
+[database]
+# One machine, one volume, SQLite. There is no separate migration job to own
+# migrations, so boot applies them to the control database and every hive
+# file, exactly as under `cargo run`.
+auto_migrate_in_production = true

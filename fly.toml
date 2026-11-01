@@ -1,0 +1,70 @@
+# fly.toml — Apiary on Fly.io. See DEPLOY section of README.md.
+#
+# Apiary is single-machine by construction: SQLite files on one volume, an
+# in-memory session store, and one Harvest runtime owned by one task. Never
+# scale past one machine (`fly scale count 1`); a second machine would get its
+# own empty volume and its own sessions.
+
+app = "apiary"            # change to your app name, and the host below with it
+primary_region = "iad"
+
+kill_signal  = "SIGTERM"
+# prestop grace (5) + prod shutdown_timeout (35) + 10 s to log and exit.
+kill_timeout = 50
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # Must name every hostname the app is served on (comma-separated); the prod
+  # profile refuses to boot without it and answers 400 to any other Host.
+  AUTUMN_SECURITY__TRUSTED_HOSTS__HOSTS = "apiary.fly.dev"
+  APIARY_GRACE_SECS = "90"
+
+# Every file Apiary writes — control db, hives, Harvest db, backups — is here.
+[mounts]
+  source      = "apiary_data"
+  destination = "/data"
+  initial_size = "1gb"
+
+[http_service]
+  internal_port       = 3000
+  force_https         = true
+  # Keep the one machine running: an offboarding grace countdown and the
+  # sweeper that closes idle hives live in the process, and sessions are in
+  # memory, so a stopped machine forgets which hive you were standing in.
+  auto_stop_machines  = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  # The comb holds an SSE connection open per tab.
+  [http_service.concurrency]
+    type       = "connections"
+    soft_limit = 200
+    hard_limit = 250
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval     = "10s"
+    method       = "GET"
+    path         = "/ready"
+    timeout      = "2s"
+
+[checks.live]
+  type         = "http"
+  port         = 3000
+  path         = "/live"
+  method       = "get"
+  interval     = "15s"
+  timeout      = "2s"
+  grace_period = "10s"
+
+[metrics]
+  port = 3000
+  path = "/actuator/prometheus"
+
+[[vm]]
+  # A 1,000-hive storm peaks around 150 MB.
+  memory   = "512mb"
+  cpu_kind = "shared"
+  cpus     = 1
