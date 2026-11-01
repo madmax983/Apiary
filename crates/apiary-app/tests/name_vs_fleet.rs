@@ -23,8 +23,11 @@ proptest! {
             prop_assert!(key.is_ok(), "{name}: {key:?}");
             let key = key.unwrap();
             prop_assert_eq!(key.name(), name.db_name());
-            let root = tmp.path().join("fleet");
-            prop_assert!(fleet.path_of(&key).starts_with(&root));
+            // The fleet resolves symlinks in its root (on macOS the temp dir
+            // is under /var, a link to /private/var), so compare resolved.
+            let root = std::fs::canonicalize(tmp.path()).unwrap().join("fleet");
+            let path = fleet.path_of(&key);
+            prop_assert!(path.starts_with(&root), "{} is outside {}", path.display(), root.display());
         }
     }
 

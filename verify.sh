@@ -26,7 +26,10 @@ FAILED=0
 QUICK=0
 APP_PID=""
 SCRATCH=""
-PORT=3000
+# A free port, so a `cargo run` you already have going on 3000 is no obstacle.
+port_in_use() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+PORT=3100
+while port_in_use "$PORT"; do PORT=$((PORT + 1)); done
 BASE="http://127.0.0.1:$PORT"
 
 if [ "${1:-}" = "--quick" ]; then QUICK=1; fi
@@ -60,7 +63,7 @@ trap cleanup EXIT INT TERM
 # ── Gate 0: the toolchain must match rust-toolchain.toml ────────────────────
 
 step "toolchain"
-EXPECTED=$(sed -n 's/^channel[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' rust-toolchain.toml | head -1)
+EXPECTED=$(sed -n 's/^channel[[:space:]]*=[[:space:]]*"\(.*\)"/\1/p' rust-toolchain.toml | sed -n 1p)
 if ! command -v cargo >/dev/null 2>&1; then
     printf '%sFAIL%s cargo is not on PATH\n' "$RED" "$OFF"; exit 1
 fi
@@ -87,44 +90,53 @@ run_gate "cargo test"   cargo test --workspace
 flow() {
     local jar="$SCRATCH/cookies.txt" token body phase i
     token=$(curl -fsS -c "$jar" -b "$jar" "$BASE/" \
-        | sed -n 's/.*name="csrf-token" content="\([^"]*\)".*/\1/p' | head -1)
+        | sed -n 's/.*name="csrf-token" content="\([^"]*\)".*/\1/p' | sed -n 1p)
     [ -n "$token" ] || { echo "no csrf token on the comb"; return 1; }
     post() { curl -fsS -c "$jar" -b "$jar" -H "HX-Request: true" -H "X-CSRF-Token: $token" -X POST "$@"; }
     get() { curl -fsS -c "$jar" -b "$jar" "$@"; }
+    # `expect PATTERN cmd...`: run cmd, then look for PATTERN in all of its
+    # output. Never `cmd | grep -q`: grep exits on the first match, curl dies
+    # of SIGPIPE mid-write, and under pipefail the step fails at random.
+    expect() {
+        local pattern="$1" out; shift
+        out=$("$@") || return 1
+        grep -qi -- "$pattern" <<<"$out"
+    }
 
-    echo "found a hive";      post -D - -d name=verify "$BASE/hives" | grep -qi '^hx-redirect: /hive' || return 1
-    echo "walk into it";      get "$BASE/hive" | grep -q 'The <code>verify</code> hive' || return 1
-    echo "write a note";      post -d 'body=written+by+verify.sh' "$BASE/hive/notes" | grep -q 'written by verify.sh' || return 1
+    echo "found a hive";      expect '^hx-redirect: /hive' post -D - -d name=verify "$BASE/hives" || return 1
+    echo "walk into it";      expect 'The <code>verify</code> hive' get "$BASE/hive" || return 1
+    echo "write a note";      expect 'written by verify.sh' post -d 'body=written+by+verify.sh' "$BASE/hive/notes" || return 1
     echo "an unfounded hive"; [ "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/enter/nobody-here")" = 404 ] || return 1
     echo "a hostile name";    [ "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/enter/Not.A.Hive")" = 400 ] || return 1
-    echo "export the file";   get "$BASE/hive/export" | head -c 16 | grep -q 'SQLite format 3' || return 1
+    echo "export the file";   get -o "$SCRATCH/export.db" "$BASE/hive/export" || return 1
+    [ "$(head -c 15 "$SCRATCH/export.db")" = "SQLite format 3" ] || return 1
 
     echo "raise a storm (1,000 hives)"
     post "$BASE/storm" >/dev/null || return 1
     for i in $(seq 1 600); do
         body=$(get "$BASE/_map")
-        if ! printf '%s' "$body" | grep -q 'Storming'; then break; fi
+        if ! grep -q 'Storming' <<<"$body"; then break; fi
         sleep 1
     done
-    printf '%s' "$body" | grep -q 'Storming' && { echo "the storm never finished"; return 1; }
-    printf '%s' "$body" | grep -q '<b>0</b><span>failed ops</span>' || { echo "the storm had failed ops"; return 1; }
-    printf '  peak open / cap: %s\n' "$(printf '%s' "$body" | sed -n 's/.*<b>\([0-9]* \/ [0-9]*\)<\/b><span>peak open \/ cap.*/\1/p')"
+    grep -q 'Storming' <<<"$body" && { echo "the storm never finished"; return 1; }
+    grep -q '<b>0</b><span>failed ops</span>' <<<"$body" || { echo "the storm had failed ops"; return 1; }
+    printf '  peak open / cap: %s\n' "$(sed -n 's/.*<b>\([0-9]* \/ [0-9]*\)<\/b><span>peak open \/ cap.*/\1/p' <<<"$body")"
 
-    echo "search every hive"; get "$BASE/search?q=storm+note+3" | grep -q 'hives matched' || return 1
+    echo "search every hive"; expect 'hives matched' get "$BASE/search?q=storm+note+3" || return 1
 
     echo "offboard (grace ${APIARY_GRACE_SECS}s)"
     get "$BASE/enter/verify" >/dev/null
     post "$BASE/hive/offboard" >/dev/null || return 1
     phase=""
     for i in $(seq 1 60); do
-        phase=$(get "$BASE/_hive/offboarding" | sed -n 's/.*class="phase \([a-z]*\)".*/\1/p' | head -1)
+        phase=$(get "$BASE/_hive/offboarding" | sed -n 's/.*class="phase \([a-z]*\)".*/\1/p' | sed -n 1p)
         [ "$phase" = deleted ] || [ "$phase" = aborted ] && break
         sleep 1
     done
     [ "$phase" = deleted ] || { echo "offboarding ended in '$phase'"; return 1; }
-    get "$BASE/hive" | grep -q 'Restore from the backup' || return 1
-    echo "restore it";        post -D - "$BASE/hive/restore" | grep -qi '^hx-redirect: /hive' || return 1
-    get "$BASE/hive/notes" | grep -q 'written by verify.sh' || { echo "the note did not come back"; return 1; }
+    expect 'Restore from the backup' get "$BASE/hive" || return 1
+    echo "restore it";        expect '^hx-redirect: /hive' post -D - "$BASE/hive/restore" || return 1
+    expect 'written by verify.sh' get "$BASE/hive/notes" || { echo "the note did not come back"; return 1; }
     echo "the note came back from the backup"
 }
 
@@ -143,7 +155,7 @@ else
     # A storm holds hundreds of hive files open at once (see docs/FINDINGS.md).
     ulimit -n 8192 2>/dev/null || ulimit -n 4096 2>/dev/null || true
     printf 'open-file limit: %s\n' "$(ulimit -n)"
-    export AUTUMN_PROFILE=dev APIARY_GRACE_SECS=3
+    export AUTUMN_PROFILE=dev APIARY_GRACE_SECS=3 AUTUMN_SERVER__PORT="$PORT"
     : "${AUTUMN_SECURITY__SIGNING_SECRET:=verify-sh-development-secret-not-for-production-use}"
     export AUTUMN_SECURITY__SIGNING_SECRET
     (cd "$SCRATCH" && exec "$ROOT/target/debug/apiary-app") > "$SCRATCH/boot.log" 2>&1 &
