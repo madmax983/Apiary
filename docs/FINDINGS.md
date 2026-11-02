@@ -15,7 +15,7 @@ upgrades.
 | 1 | `max_open` docs say "soft limit"; `[database.fleet] min_residency`; fd budget in the fleet guide | set `min_residency` in `autumn.toml` if a burst needs it |
 | 2 | `AppBuilder::migrations_for(MigrationScope::Control \| Shards, set)` | split the set; see ADR 0002 |
 | 3 | `DatabaseFleet::import(key, src)`, `autumn fleet import` | replace `stage_restore` and `Observer::restore_missing` with `fleet.import` |
-| 4 | `Sqlite<Trait>` alias; dev `session.secure = false`; required `CsrfToken` is empty with CSRF off; `autumn_web::db::prelude`; `libsqlite3-sys` note in the guide | drop `secure = false` from `autumn-dev.toml` |
+| 4 | `Sqlite<Trait>` alias; dev `session.secure = false`; required `CsrfToken` is empty with CSRF off; `autumn_web::db::prelude`; `libsqlite3-sys` note in the guide | drop `secure = false` from `autumn-dev.toml`; use `autumn_web::db::prelude::*` and update the `diesel::prelude` rule in `CLAUDE.md`; optionally use `SqliteNoteRepository` |
 
 ## 1. `max_open` is soft under bursts — and the config doc does not say so
 
